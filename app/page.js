@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckSquare, Home, Plus, Trash2, Clock, BookOpen, Check, RefreshCw, Bell, BellOff, ChevronLeft, ChevronRight, CalendarDays, AlertTriangle } from 'lucide-react';
+import { Calendar, CheckSquare, Home, Plus, Trash2, Clock, BookOpen, Check, RefreshCw, Bell, BellOff, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 
 export default function App() {
   // --- ÉTATS PRINCIPAUX ---
@@ -12,18 +12,10 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [todayDate, setTodayDate] = useState(new Date());
 
-  // État des cours avec ajout du tableau "exceptDates" pour gérer les suppressions uniques
-  const [courses, setCourses] = useState([
-    { id: 1, name: 'Mathématiques', day: 'Lundi', start: '08:30', end: '10:00', room: 'Salle 101', repeat: 'Chaque semaine', color: 'indigo', createdDate: '2026-05-11', exceptDates: [] },
-    { id: 2, name: 'Histoire-Géo', day: 'Mardi', start: '10:15', end: '12:15', room: 'Amphi B', repeat: 'Une seule fois', color: 'amber', specificDate: '2026-05-26', createdDate: '2026-05-26', exceptDates: [] },
-    { id: 3, name: 'Informatique', day: 'Jeudi', start: '14:00', end: '16:00', room: 'Labo Info', repeat: 'Chaque semaine', color: 'emerald', createdDate: '2026-05-11', exceptDates: [] },
-  ]);
-
-  // État de la To-Do Liste complète
-  const [todos, setTodos] = useState([
-    { id: 1, text: 'Rendre le DM de maths', completed: false, dueDate: '2026-05-25' },
-    { id: 2, text: 'Préparer la soutenance d\'info', completed: false, dueDate: '2026-05-28' },
-  ]);
+  // États des données (chargés depuis le localStorage)
+  const [courses, setCourses] = useState([]);
+  const [todos, setTodos] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Formulaire d'ajout de cours
   const [newCourse, setNewCourse] = useState({ 
@@ -40,7 +32,6 @@ export default function App() {
   const [newTodo, setNewTodo] = useState({ text: '', dueDate: new Date().toLocaleDateString('fr-CA') });
 
   const daysOfWeek = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  const daysMapEnglish = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
   
   const colors = [
     { id: 'indigo', label: 'Bleu/Indigo', bg: 'bg-indigo-600', text: 'text-indigo-400', border: 'border-indigo-500/30', hover: 'hover:border-indigo-500/60', badge: 'bg-indigo-500/10 text-indigo-300' },
@@ -53,7 +44,50 @@ export default function App() {
     return colors.find(c => c.id === colorId) || colors[0];
   };
 
-  // --- FONCTION DE TRI DES HORAIRES ---
+  // ================= EFFETS INITIALISATION & LOCALSTORAGE =================
+  useEffect(() => {
+    const now = new Date();
+    setTodayDate(now);
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+    }
+
+    const savedCourses = localStorage.getItem('student_dash_courses');
+    const savedTodos = localStorage.getItem('student_dash_todos');
+
+    if (savedCourses) {
+      setCourses(JSON.parse(savedCourses));
+    } else {
+      // Données de base par défaut si le stockage est vide
+      setCourses([
+        { id: 1, name: 'Mathématiques', day: 'Lundi', start: '08:30', end: '10:00', room: 'Salle 101', repeat: 'Chaque semaine', color: 'indigo', createdDate: '2026-05-11', exceptDates: [] },
+        { id: 2, name: 'Histoire-Géo', day: 'Mardi', start: '10:15', end: '12:15', room: 'Amphi B', repeat: 'Une seule fois', color: 'amber', specificDate: '2026-05-26', createdDate: '2026-05-26', exceptDates: [] },
+        { id: 3, name: 'Informatique', day: 'Jeudi', start: '14:00', end: '16:00', room: 'Labo Info', repeat: 'Chaque semaine', color: 'emerald', createdDate: '2026-05-11', exceptDates: [] },
+      ]);
+    }
+
+    if (savedTodos) {
+      setTodos(JSON.parse(savedTodos));
+    } else {
+      setTodos([
+        { id: 1, text: 'Rendre le DM de maths', completed: false, dueDate: '2026-05-25' },
+        { id: 2, text: 'Préparer la soutenance d\'info', completed: false, dueDate: '2026-05-28' },
+      ]);
+    }
+    
+    setIsLoaded(true);
+  }, []);
+
+  // Sauvegarder automatiquement dès qu'un élément change
+  useEffect(() => {
+    if (isLoaded) localStorage.setItem('student_dash_courses', JSON.stringify(courses));
+  }, [courses, isLoaded]);
+
+  useEffect(() => {
+    if (isLoaded) localStorage.setItem('student_dash_todos', JSON.stringify(todos));
+  }, [todos, isLoaded]);
+
+  // --- MOTEUR DE TRI DES HORAIRES COMPLET ---
   const getSortableTime = (timeString) => {
     if (!timeString) return 0;
     const parts = timeString.toLowerCase().split(/[h:.,\s]+/);
@@ -73,21 +107,18 @@ export default function App() {
   const shouldShowCourseOnDate = (course, targetDateObj) => {
     const targetISO = targetDateObj.toLocaleDateString('fr-CA');
     
-    // FILTRE D'EXCEPTION : Si cette date a été supprimée spécifiquement, on n'affiche pas
+    // FILTRE D'EXCEPTION REQUIS : Empêche l'affichage si la date est annulée de façon isolée
     if (course.exceptDates && course.exceptDates.includes(targetISO)) {
       return false;
     }
 
-    // 1. Une seule fois
     if (course.repeat === 'Une seule fois') {
       return course.specificDate === targetISO;
     }
 
-    // Si ce n'est pas le bon jour de la semaine, on élimine d'office
     const dayName = daysOfWeek[(targetDateObj.getDay() + 6) % 7];
     if (course.day !== dayName) return false;
 
-    // Calcul de l'écart avec la date de création du cours
     const start = new Date(course.createdDate || targetISO);
     start.setHours(0,0,0,0);
     const target = new Date(targetDateObj);
@@ -95,10 +126,8 @@ export default function App() {
 
     if (target < start) return false;
 
-    // 2. Chaque semaine
     if (course.repeat === 'Chaque semaine') return true;
 
-    // 3. Toutes les 2 semaines
     if (course.repeat === 'Toutes les 2 semaines') {
       const diffTime = Math.abs(target - start);
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -106,7 +135,6 @@ export default function App() {
       return diffWeeks % 2 === 0;
     }
 
-    // 4. Chaque mois
     if (course.repeat === 'Chaque mois') {
       return start.getDate() === target.getDate() || (target.getMonth() - start.getMonth() + (12 * (target.getFullYear() - start.getFullYear()))) >= 0;
     }
@@ -114,7 +142,7 @@ export default function App() {
     return false;
   };
 
-  // --- FONCTIONS DE CALCUL DES DATES ET SEMAINES ---
+  // --- NAVIGATION SEMAINE ---
   const getStartOfWeek = (date) => {
     const d = new Date(date);
     const day = d.getDay();
@@ -135,50 +163,31 @@ export default function App() {
   };
 
   const handleGoToToday = () => {
-    const today = new Date();
-    setCurrentDate(today);
+    setCurrentDate(new Date());
   };
 
-  const getDaysOfCurrentWeek = () => {
-    const start = getStartOfWeek(currentDate);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return d;
-    });
-  };
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = getStartOfWeek(currentDate);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
 
-  const weekDays = getDaysOfCurrentWeek();
   const startOfWeekLabel = weekDays[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   const endOfWeekLabel = weekDays[6].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  // --- EFFETS INITIALISATION ---
-  useEffect(() => {
-    const now = new Date();
-    setTodayDate(now);
-    if ('Notification' in window) {
-      setNotifPermission(Notification.permission);
-    }
-  }, []);
-
+  // --- NOTIFICATIONS ---
   const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) {
-      alert('Notifications non supportées.');
-      return;
-    }
+    if (!('Notification' in window)) return;
     const permission = await Notification.requestPermission();
     setNotifPermission(permission);
   };
 
   const sendTestNotification = () => {
-    if (notifPermission !== 'granted') {
-      alert('Veuillez d\'abord autoriser les notifications.');
-      return;
-    }
+    if (notifPermission !== 'granted') return;
     new Notification('StudentDash 📅', { body: 'Ça fonctionne niquel ! Rappel de cours activé.' });
   };
 
-  // --- ACTIONS CALENDRIER & RECURRENCE INTELLIGENTE ---
+  // --- ACTIONS ACTIONS COURS & SUPPRESSION INTELLIGENTE ---
   const handleAddCourse = (e) => {
     e.preventDefault();
     if (!newCourse.name || !newCourse.start || !newCourse.end) return;
@@ -192,21 +201,19 @@ export default function App() {
       id: Date.now(), 
       specificDate: newCourse.repeat === 'Une seule fois' ? specificDate : null,
       createdDate: specificDate,
-      exceptDates: [] // Initialise le tableau d'annulations isolées
+      exceptDates: [] 
     }]);
     
     setNewCourse({ name: '', day: 'Lundi', start: '', end: '', room: '', repeat: 'Chaque semaine', color: 'indigo' });
   };
 
-  // NOUVELLE LOGIQUE DE SUPPRESSION CIBLÉE
   const handleDeleteCourseClick = (course, currentOccurrenceDateISO) => {
-    // Si c'est un cours unique, pas besoin de poser de question compliquée
     if (course.repeat === 'Une seule fois') {
       setCourses(courses.filter(c => c.id !== course.id));
       return;
     }
 
-    // Boîte de dialogue pour proposer l'alternative
+    // Dialogue d'alternative de suppression préservé
     const choice = window.confirm(
       `Options de suppression pour "${course.name}" :\n\n` +
       `👉 Cliquez sur [ OK ] pour annuler ce cours UNIQUEMENT le ${new Date(currentOccurrenceDateISO).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}.\n` +
@@ -214,7 +221,6 @@ export default function App() {
     );
 
     if (choice) {
-      // Choix 1 : Ajouter la date actuelle dans les exceptions
       setCourses(courses.map(c => {
         if (c.id === course.id) {
           const currentExceptions = c.exceptDates || [];
@@ -223,7 +229,6 @@ export default function App() {
         return c;
       }));
     } else {
-      // Deuxième niveau de sécurité pour la suppression totale
       const confirmAll = window.confirm(`Voulez-vous vraiment détruire la totalité de la série de cours "${course.name}" ?`);
       if (confirmAll) {
         setCourses(courses.filter(c => c.id !== course.id));
@@ -231,7 +236,7 @@ export default function App() {
     }
   };
 
-  // --- ACTIONS TO-DO ---
+  // --- GESTION TO-DO ---
   const handleAddTodo = (e) => {
     e.preventDefault();
     if (!newTodo.text) return;
@@ -247,11 +252,11 @@ export default function App() {
     setTodos(todos.filter(todo => todo.id !== id));
   };
 
-  // --- FILTRES DU JOUR (ACCUEIL) ---
+  // --- ACCUEIL FILTRES ET TRI REQUIS ---
   const todayISO = todayDate.toLocaleDateString('fr-CA');
   const todayCourses = courses
     .filter(c => shouldShowCourseOnDate(c, todayDate))
-    .sort((a, b) => getSortableTime(a.start) - getSortableTime(b.start));
+    .sort((a, b) => getSortableTime(a.start) - getSortableTime(b.start)); // Tri chronologique actif
 
   const todayTodos = todos.filter(t => t.dueDate === todayISO && !t.completed);
 
@@ -269,38 +274,23 @@ export default function App() {
           </div>
           
           <div className="flex space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-700/50">
-            <button
-              onClick={() => setActiveTab('home')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                activeTab === 'home' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
+            <button onClick={() => setActiveTab('home')} className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
               <Home size={16} /> <span className="hidden sm:inline">Aujourd'hui</span>
             </button>
-            <button
-              onClick={() => setActiveTab('calendar')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
+            <button onClick={() => setActiveTab('calendar')} className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
               <Calendar size={16} /> <span className="hidden sm:inline">Mon Emploi du Temps</span>
             </button>
-            <button
-              onClick={() => setActiveTab('todo')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                activeTab === 'todo' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
+            <button onClick={() => setActiveTab('todo')} className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'todo' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200'}`}>
               <CheckSquare size={16} /> <span className="hidden sm:inline">To-Do Liste</span>
             </button>
           </div>
         </div>
       </nav>
 
-      {/* --- CONTENU PRINCIPAL --- */}
+      {/* --- DESIGN GENERAL CONTAINER --- */}
       <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         
-        {/* ================= BARRE DE GESTION DES NOTIFICATIONS ================= */}
+        {/* BARRE NOTIFICATIONS */}
         <div className="mb-6 flex flex-wrap gap-3 items-center justify-between p-4 bg-slate-800 rounded-xl border border-slate-700 shadow-md">
           <div className="flex items-center space-x-3">
             {notifPermission === 'granted' ? (
@@ -327,13 +317,13 @@ export default function App() {
           </div>
         </div>
 
-        {/* ================= PAGE D'ACCUEIL ================= */}
+        {/* CONTENU ONGLETS */}
         {activeTab === 'home' && (
           <div className="space-y-8">
             <div className="bg-gradient-to-r from-indigo-900/40 to-slate-800 rounded-2xl p-6 border border-indigo-500/20 shadow-xl flex justify-between items-center">
               <div>
                 <h1 className="text-3xl font-extrabold text-white mb-2">Au programme aujourd'hui 📅</h1>
-                <p className="text-slate-400">Nous sommes le <b>{todayDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</b>.</p>
+                <p className="text-slate-400">Nous sommes le <span className="capitalize font-bold text-slate-200">{todayDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>.</p>
               </div>
               <span className="hidden sm:block text-xs px-3 py-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full font-semibold uppercase tracking-wider">Focus Mode</span>
             </div>
@@ -346,8 +336,8 @@ export default function App() {
                   <button onClick={() => setActiveTab('calendar')} className="text-xs text-indigo-400 hover:underline">Voir la semaine</button>
                 </div>
                 {todayCourses.length === 0 ? (
-                  <div className="text-center py-8 bg-slate-900/40 rounded-lg border border-dashed border-slate-700">
-                    <p className="text-slate-500 text-sm">Aucun cours de prévu aujourd'hui. Repos ! 🙌</p>
+                  <div className="text-center py-8 bg-slate-900/40 rounded-lg border border-dashed border-slate-700 text-slate-500 text-sm">
+                    Aucun cours de prévu aujourd'hui. Repos ! 🙌
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -368,7 +358,7 @@ export default function App() {
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className={`text-xs px-2.5 py-1 rounded border ${style.badge} border-slate-700`}>{course.room || 'N/A'}</span>
-                            <button onClick={() => handleDeleteCourseClick(course, todayISO)} className="text-slate-500 hover:text-rose-400 p-1 opacity-0 group-hover:opacity-100 transition-all" title="Annuler ou supprimer">
+                            <button onClick={() => handleDeleteCourseClick(course, todayISO)} className="text-slate-500 hover:text-rose-400 p-1 opacity-0 group-hover:opacity-100 transition-all">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -386,15 +376,15 @@ export default function App() {
                   <button onClick={() => setActiveTab('todo')} className="text-xs text-emerald-400 hover:underline">Gérer la liste</button>
                 </div>
                 {todayTodos.length === 0 ? (
-                  <div className="text-center py-8 bg-slate-900/40 rounded-lg border border-dashed border-slate-700">
-                    <p className="text-emerald-400 text-sm font-medium">🎉 Rien à faire pour aujourd'hui !</p>
+                  <div className="text-center py-8 bg-slate-900/40 rounded-lg border border-dashed border-slate-700 text-emerald-400 text-sm font-medium">
+                    🎉 Rien à faire pour aujourd'hui !
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {todayTodos.map(todo => (
                       <div key={todo.id} className="flex items-center justify-between bg-slate-900/60 p-3.5 rounded-lg border border-slate-700/40">
                         <div className="flex items-center space-x-3">
-                          <button onClick={() => toggleTodo(todo.id)} className="w-5 h-5 rounded-md border border-slate-600 flex items-center justify-center hover:border-emerald-500 transition-colors bg-slate-900">
+                          <button onClick={() => toggleTodo(todo.id)} className="w-5 h-5 rounded-md border border-slate-600 flex items-center justify-center hover:border-emerald-500 bg-slate-900">
                             <Check size={12} className="text-transparent" />
                           </button>
                           <span className="text-sm text-slate-200">{todo.text}</span>
@@ -409,30 +399,22 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= PAGE CALENDRIER ================= */}
+        {/* CALENDRIER SEMAINIER */}
         {activeTab === 'calendar' && (
           <div className="space-y-6">
-            
-            {/* MANETTE DE NAVIGATION */}
             <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700 gap-4 shadow-lg">
               <div className="flex items-center space-x-2 text-indigo-400 font-bold text-lg">
                 <CalendarDays size={22} />
                 <span>Semaine du {startOfWeekLabel} au {endOfWeekLabel}</span>
               </div>
               <div className="flex space-x-2 bg-slate-900 p-1 rounded-lg border border-slate-700/60">
-                <button type="button" onClick={handlePrevWeek} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors">
-                  <ChevronLeft size={18} />
-                </button>
-                <button type="button" onClick={handleGoToToday} className="px-3 py-1 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors">
-                  Aujourd'hui
-                </button>
-                <button type="button" onClick={handleNextWeek} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors">
-                  <ChevronRight size={18} />
-                </button>
+                <button type="button" onClick={handlePrevWeek} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md"><ChevronLeft size={18} /></button>
+                <button type="button" onClick={handleGoToToday} className="px-3 py-1 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-md">Aujourd'hui</button>
+                <button type="button" onClick={handleNextWeek} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md"><ChevronRight size={18} /></button>
               </div>
             </div>
 
-            {/* Formulaire complet */}
+            {/* Ajouter de cours */}
             <form onSubmit={handleAddCourse} className="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-md space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
@@ -458,7 +440,7 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end pt-2 border-t border-slate-700/50">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Répétition</label>
-                  <select value={newCourse.repeat} onChange={e => setNewCourse({...newCourse, repeat: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                  <select value={newCourse.repeat} onChange={e => setNewCourse({...newCourse, repeat: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
                     <option value="Chaque semaine">Chaque semaine</option>
                     <option value="Toutes les 2 semaines">Toutes les 2 semaines</option>
                     <option value="Chaque mois">Chaque mois</option>
@@ -469,7 +451,7 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Couleur</label>
                   <div className="flex items-center space-x-2 bg-slate-900 p-1.5 rounded-lg border border-slate-700">
                     {colors.map(c => (
-                      <button type="button" key={c.id} onClick={() => setNewCourse({...newCourse, color: c.id})} className={`w-6 h-6 rounded-full ${c.bg} transition-transform ${newCourse.color === c.id ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'}`} title={c.label} />
+                      <button type="button" key={c.id} onClick={() => setNewCourse({...newCourse, color: c.id})} className={`w-6 h-6 rounded-full ${c.bg} transition-transform ${newCourse.color === c.id ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'}`} />
                     ))}
                     <span className="text-xs text-slate-400 ml-1 capitalize">{newCourse.color}</span>
                   </div>
@@ -477,7 +459,7 @@ export default function App() {
                 <div className="md:col-span-1 lg:col-span-2 flex items-end gap-3">
                   <div className="flex-1">
                     <label className="block text-xs font-semibold text-slate-400 mb-1">Salle (Optionnel)</label>
-                    <input type="text" placeholder="Ex: B204" value={newCourse.room} onChange={e => setNewCourse({...newCourse, room: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                    <input type="text" placeholder="Ex: B204" value={newCourse.room} onChange={e => setNewCourse({...newCourse, room: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
                   </div>
                   <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5 py-2 rounded-lg text-sm flex items-center gap-2 h-[38px] shrink-0 transition-colors">
                     <Plus size={18} /> Ajouter le cours
@@ -486,13 +468,14 @@ export default function App() {
               </div>
             </form>
 
-            {/* VUE SEMAINIER COMPLÈTE AVEC SYSTÈME DE SUPPRESSION PAR DATE OU SÉRIE */}
+            {/* Semainier complet */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
               {weekDays.map((dateObj, idx) => {
                 const dayName = daysOfWeek[idx];
                 const dateISO = dateObj.toLocaleDateString('fr-CA');
                 const isCurrentToday = dateISO === todayISO;
 
+                // Application du moteur de tri chronologique
                 const dayCourses = courses
                   .filter(c => shouldShowCourseOnDate(c, dateObj))
                   .sort((a, b) => getSortableTime(a.start) - getSortableTime(b.start));
@@ -512,12 +495,7 @@ export default function App() {
                           const style = getColorStyles(course.color);
                           return (
                             <div key={course.id} className="group relative bg-slate-900/80 border border-slate-700/40 hover:border-slate-500/40 rounded-lg p-3 transition-all">
-                              {/* BOUTON CORBEILLE INTELLIGENT */}
-                              <button 
-                                onClick={() => handleDeleteCourseClick(course, dateISO)} 
-                                className="absolute top-2 right-2 text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Supprimer (Ce jour ou la série)"
-                              >
+                              <button onClick={() => handleDeleteCourseClick(course, dateISO)} className="absolute top-2 right-2 text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Trash2 size={14} />
                               </button>
                               
@@ -551,7 +529,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= PAGE TO-DO LISTE ================= */}
+        {/* ONGLET TO-DO LISTE */}
         {activeTab === 'todo' && (
           <div className="max-w-3xl mx-auto space-y-6">
             <form onSubmit={handleAddTodo} className="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md flex flex-col sm:flex-row gap-3">
@@ -574,52 +552,31 @@ export default function App() {
 
               <div className="divide-y divide-slate-700/60">
                 {todos.length === 0 ? (
-                  <p className="text-sm text-slate-500 text-center py-8">Aucune tâche enregistrée.</p>
+                  <p className="text-center py-8 text-slate-500 text-sm">Aucune tâche enregistrée dans votre historique.</p>
                 ) : (
-                  todos.map(todo => {
-                    const isTodoToday = todo.dueDate === todayISO;
-                    return (
-                      <div key={todo.id} className="p-4 flex items-center justify-between hover:bg-slate-700/10 transition-colors group">
-                        <div className="flex items-center space-x-3 flex-1 min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => toggleTodo(todo.id)}
-                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all ${
-                              todo.completed 
-                                ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                : 'border-slate-500 hover:border-emerald-500 bg-slate-900'
-                            }`}
-                          >
-                            {todo.completed && <Check size={14} strokeWidth={3} />}
-                          </button>
-                          <span className={`text-sm truncate pr-4 ${todo.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
-                            {todo.text}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3 shrink-0">
-                          <span className={`text-xs px-2 py-1 rounded font-medium border ${
-                            todo.completed 
-                              ? 'bg-slate-900 text-slate-600 border-slate-800' 
-                              : isTodoToday
-                              ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 font-bold animate-pulse'
-                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          }`}>
-                            {isTodoToday && !todo.completed ? "Aujourd'hui" : new Date(todo.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                          </span>
-                          <button type="button" onClick={() => handleDeleteTodo(todo.id)} className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                  todos.map(todo => (
+                    <div key={todo.id} className="p-4 flex items-center justify-between hover:bg-slate-700/10 transition-colors">
+                      <div className="flex items-center space-x-3 flex-1 min-w-0">
+                        <button onClick={() => toggleTodo(todo.id)} className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${todo.completed ? 'bg-emerald-600 border-emerald-500 text-white' : 'border-slate-600 bg-slate-900 hover:border-emerald-500'}`}>
+                          {todo.completed && <Check size={12} />}
+                        </button>
+                        <span className={`text-sm truncate ${todo.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>{todo.text}</span>
                       </div>
-                    );
-                  })
+                      <div className="flex items-center space-x-3 ml-4">
+                        <span className="text-xs px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
+                          {new Date(todo.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </span>
+                        <button onClick={() => handleDeleteTodo(todo.id)} className="text-slate-500 hover:text-rose-400 transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
